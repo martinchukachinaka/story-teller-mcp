@@ -1,0 +1,12 @@
+spring:
+  application:
+    name: story-teller-mcp
+  ai:
+    mcp:
+      server:
+        protocol: streamable
+  jpa:
+    hibernate:
+      ddl-auto: update
+server:
+  port: 8282

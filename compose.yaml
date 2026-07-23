@@ -1,0 +1,9 @@
+services:
+  postgres:
+    image: 'postgres:18'
+    environment:
+      - 'POSTGRES_DB=whatif_db'
+      - 'POSTGRES_USER=whatif'
+      - 'POSTGRES_PASSWORD=whatif'
+    ports:
+      - '15432:5432'
