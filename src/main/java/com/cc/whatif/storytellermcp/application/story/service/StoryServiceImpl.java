@@ -1,12 +1,12 @@
 package com.cc.whatif.storytellermcp.application.story.service;
 
+import com.cc.whatif.storytellermcp.application.story.dto.ChapterRequest;
 import com.cc.whatif.storytellermcp.application.story.dto.StoryRequest;
 import com.cc.whatif.storytellermcp.application.story.repo.StoryRepo;
+import com.cc.whatif.storytellermcp.domain.story.Chapter;
 import com.cc.whatif.storytellermcp.domain.story.Story;
-import com.cc.whatif.storytellermcp.persistence.story.model.enums.StoryLength;
-import com.cc.whatif.storytellermcp.persistence.story.model.enums.VillainMode;
-import com.cc.whatif.storytellermcp.persistence.story.model.enums.Virtue;
-import com.cc.whatif.storytellermcp.persistence.story.model.enums.VirtueApproach;
+import com.cc.whatif.storytellermcp.infrastructure.exceptions.StoryException;
+import com.cc.whatif.storytellermcp.persistence.story.model.enums.*;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static org.apache.commons.lang3.StringUtils.defaultIfBlank;
+import static org.springframework.util.CollectionUtils.isEmpty;
 
 @Service
 @RequiredArgsConstructor
@@ -70,5 +71,25 @@ public class StoryServiceImpl implements StoryService {
     @Override
     public List<Story> findStories() {
         return storyRepo.findStories();
+    }
+
+    @Override
+    public Story saveChapter(ChapterRequest request) {
+        Story story = storyRepo.findById(request.storyId());
+        if (story.getStatus() == StoryStatus.COMPLETE) {
+            throw new StoryException("Story[%s] is already complete".formatted(request.storyId()));
+        }
+
+        var choiceOptions = request.isFinalChapter() ? List.<String>of() : request.choiceOptions();
+        if (!request.isFinalChapter() && isEmpty(choiceOptions)) {
+            throw new StoryException(
+                    "Non-final chapters require 2-3 choiceOptions; got none for story[%s]".formatted(request.storyId()));
+        }
+
+        int chapterNumber = story.getChapters().size() + 1;
+        story.addChapter(new Chapter(chapterNumber, request.content(), choiceOptions, request.isFinalChapter()));
+        story.setStatus(request.isFinalChapter() ? StoryStatus.COMPLETE : StoryStatus.AWAITING_CHOICE);
+
+        return storyRepo.save(story);
     }
 }

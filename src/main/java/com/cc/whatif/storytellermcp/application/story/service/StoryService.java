@@ -1,6 +1,7 @@
 package com.cc.whatif.storytellermcp.application.story.service;
 
 
+import com.cc.whatif.storytellermcp.application.story.dto.ChapterRequest;
 import com.cc.whatif.storytellermcp.application.story.dto.StoryRequest;
 import com.cc.whatif.storytellermcp.domain.story.Story;
 
@@ -18,4 +19,5 @@ public interface StoryService {
 
     List<Story> findStories();
 
+    Story saveChapter(ChapterRequest request);
 }

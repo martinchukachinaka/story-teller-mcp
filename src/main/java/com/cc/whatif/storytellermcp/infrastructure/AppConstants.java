@@ -25,4 +25,7 @@ public class AppConstants {
             Structure: This is chapter 1 of a %s story. Follow "the pulse": wonder (introduce the world) → tension (introduce the problem) → choice.
             End with 2-3 selectable choice options — never free text, never a "wrong" choice.
             """;
+
+    public static final String VIRTUE_REVEAL_TEMPLATE =
+            "The virtue hidden in this story was **%s**. Did you spot it?";
 }
