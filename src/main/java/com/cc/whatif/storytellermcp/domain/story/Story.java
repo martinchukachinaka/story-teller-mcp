@@ -17,42 +17,43 @@ import java.util.Set;
 @AllArgsConstructor
 public class Story {
 
-	Long id;
+    Long id;
 
-	String title;
+    String title;
 
-	@Builder.Default
-	List<String> genreBlend = new ArrayList<>();
+    @Builder.Default
+    List<Genre> genreBlend = new ArrayList<>();
 
-	String setting;
+    String setting;
 
-	Flavor flavor;
+    Flavor flavor;
 
-	@Builder.Default
-	List<String> heroes = new ArrayList<>();
+    @Builder.Default
+    List<String> heroes = new ArrayList<>();
 
-	VillainMode villainMode;
+    VillainMode villainMode;
 
-	String villainDescription;
+    String villainDescription;
 
-	Tone tone;
+    Tone tone;
 
-	StoryLength length;
+    StoryLength length;
 
-	Virtue virtue;
+    Virtue virtue;
 
-	VirtueApproach virtueApproach;
+    VirtueApproach virtueApproach;
 
-	StoryStatus status;
+    @Builder.Default
+    StoryStatus status = StoryStatus.IN_PROGRESS;
 
-	@Builder.Default
-	Set<Chapter> chapters = new HashSet<>();
+    @Builder.Default
+    Set<Chapter> chapters = new HashSet<>();
 
-	public void addChapter(Chapter chapter) {
-		chapters.add(chapter);
-	}
+    public void addChapter(Chapter chapter) {
+        chapters.add(chapter);
+    }
 
-	public void removeChapter(Chapter chapter) {
-		chapters.remove(chapter);
-	}
+    public void removeChapter(Chapter chapter) {
+        chapters.remove(chapter);
+    }
 }

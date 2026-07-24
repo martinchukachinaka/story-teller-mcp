@@ -7,6 +7,6 @@ spring:
         protocol: streamable
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: create-drop
 server:
   port: 8282

@@ -1,17 +1,21 @@
 package com.cc.whatif.storytellermcp.application.story.service;
 
 
+import com.cc.whatif.storytellermcp.application.story.dto.StoryRequest;
 import com.cc.whatif.storytellermcp.domain.story.Story;
 
 import java.util.List;
 
 public interface StoryService {
 
-	Story findStoryById(Long id);
+    Story findStoryById(Long id);
 
-	Story saveStory(Story story);
+    Story createStory(StoryRequest storyRequest);
 
-	void deleteStory(Long id);
+    Story saveStory(Story story);
 
-	List<Story> findStories();
+    void deleteStory(Long id);
+
+    List<Story> findStories();
+
 }

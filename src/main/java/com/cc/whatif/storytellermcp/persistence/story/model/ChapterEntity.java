@@ -13,28 +13,27 @@ import lombok.*;
 @Builder
 public class ChapterEntity {
 
-	@Id
-	@GeneratedValue(strategy = GenerationType.IDENTITY)
-	private Long id;
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
 
-	@ManyToOne(fetch = FetchType.LAZY)
-	@JoinColumn(name = "story_id", nullable = false)
-	private StoryEntity story;
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "story_id", nullable = false)
+    private StoryEntity story;
 
-	@Column(nullable = false)
-	private int chapterNumber;
+    @Column(nullable = false)
+    private int chapterNumber;
 
-	@Column(columnDefinition = "TEXT", nullable = false)
-	private String content;
+    @Column(columnDefinition = "TEXT", nullable = false)
+    private String content;
 
-	public ChapterEntity(Chapter chapter, StoryEntity story) {
-		setId(chapter.id());
-		setStory(story);
-		setChapterNumber(chapter.chapterNumber());
-		setContent(chapter.content());
-	}
+    public ChapterEntity(Chapter chapter, StoryEntity story) {
+        setStory(story);
+        setChapterNumber(chapter.chapterNumber());
+        setContent(chapter.content());
+    }
 
-	public Chapter toChapter() {
-		return new Chapter(id, chapterNumber, content);
-	}
+    public Chapter toChapter() {
+        return new Chapter(id, chapterNumber, content);
+    }
 }
