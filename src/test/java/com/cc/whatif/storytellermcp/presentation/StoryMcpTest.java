@@ -17,6 +17,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.util.List;
 
 import static com.cc.whatif.storytellermcp.infrastructure.AppConstants.VIRTUE_REVEAL_TEMPLATE;
+import static com.cc.whatif.storytellermcp.persistence.story.model.enums.StoryStatus.AWAITING_CHOICE;
+import static com.cc.whatif.storytellermcp.persistence.story.model.enums.StoryStatus.COMPLETE;
+import static com.cc.whatif.storytellermcp.persistence.story.model.enums.Virtue.KINDNESS;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
@@ -46,7 +49,7 @@ class StoryMcpTest {
                 .villainDescription("The Unraveller, lonely and misunderstood")
                 .tone(Tone.LIGHTHEARTED)
                 .length(StoryLength.SHORT)
-                .virtue(Virtue.KINDNESS)
+                .virtue(KINDNESS)
                 .virtueApproach(VirtueApproach.PLOT_DRIVEN)
                 .status(StoryStatus.IN_PROGRESS)
                 .build();
@@ -94,14 +97,14 @@ class StoryMcpTest {
     void saveChapter_nonFinal_returnsChapterNumberAndStatusWithoutVirtueReveal() {
         var story = fullyBuiltStory(1L);
         story.addChapter(new Chapter(100L, 1, "Once upon a sock...", List.of("Chase it", "Ignore it"), null, false));
-        story.setStatus(StoryStatus.AWAITING_CHOICE);
+        story.setStatus(AWAITING_CHOICE);
         when(storyService.saveChapter(any(ChapterRequest.class))).thenReturn(story);
 
         var response = storyMcp.saveChapter(new ChapterRequest(1L, "Once upon a sock...", List.of("Chase it", "Ignore it"), false));
 
         assertThat(response.storyId()).isEqualTo(1L);
         assertThat(response.chapterNumber()).isEqualTo(1);
-        assertThat(response.storyStatus()).isEqualTo("AWAITING_CHOICE");
+        assertThat(response.storyStatus()).isEqualTo(AWAITING_CHOICE);
         assertThat(response.virtueReveal()).isNull();
         assertThat(response.rejected()).isFalse();
     }
@@ -111,14 +114,14 @@ class StoryMcpTest {
         var story = fullyBuiltStory(1L);
         story.addChapter(new Chapter(100L, 1, "Ch1", List.of("a", "b"), null, false));
         story.addChapter(new Chapter(101L, 2, "The end.", List.of(), null, true));
-        story.setStatus(StoryStatus.COMPLETE);
+        story.setStatus(COMPLETE);
         when(storyService.saveChapter(any(ChapterRequest.class))).thenReturn(story);
 
         var response = storyMcp.saveChapter(new ChapterRequest(1L, "The end.", null, true));
 
         assertThat(response.chapterNumber()).isEqualTo(2);
-        assertThat(response.storyStatus()).isEqualTo("COMPLETE");
-        assertThat(response.virtueReveal()).isEqualTo(VIRTUE_REVEAL_TEMPLATE.formatted(Virtue.KINDNESS));
+        assertThat(response.storyStatus()).isEqualTo(COMPLETE);
+        assertThat(response.virtueReveal()).isEqualTo(VIRTUE_REVEAL_TEMPLATE.formatted(KINDNESS));
         assertThat(response.rejected()).isFalse();
     }
 

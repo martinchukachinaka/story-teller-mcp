@@ -155,4 +155,81 @@ class StoryEntityPersistenceTest {
         assertThat(chapterTwoAfter.getContent()).isEqualTo("Chapter two, the end.");
         assertThat(chapterTwoAfter.isFinalChapter()).isTrue();
     }
+
+    @Test
+    void chapterIdsRemainStableWhenAnExistingChapterGetsAChoiceRecorded() {
+        // Mirrors what StoryServiceImpl.makeChoice + StoryRepoImpl.save do in production:
+        // reload a multi-chapter story as a domain Story, swap one existing chapter for a
+        // copy with selectedOption set (remove + addChapter — an update in place, not an
+        // append), convert back to a fresh StoryEntity, save again. Same id-copy bug class
+        // as chapterIdsRemainStableAcrossRepeatedSaves, but exercised via make_choice's
+        // write shape rather than save_chapter's — proves recording a choice on one chapter
+        // doesn't disturb sibling chapters' ids.
+        Story story = Story.builder()
+                .title("Multi-save Story")
+                .genreBlend(List.of(Genre.ADVENTURE))
+                .setting("Kingdom of Tumblewick")
+                .flavor(Flavor.MAGIC)
+                .heroes(List.of("Eri"))
+                .villainMode(VillainMode.RANDOM)
+                .villainDescription("The Unraveller, lonely and misunderstood")
+                .tone(Tone.LIGHTHEARTED)
+                .length(StoryLength.SHORT)
+                .virtue(Virtue.KINDNESS)
+                .virtueApproach(VirtueApproach.PLOT_DRIVEN)
+                .status(StoryStatus.AWAITING_CHOICE)
+                .chapters(new HashSet<>(Set.of(
+                        new Chapter(null, 1, "Chapter one", List.of("Chase it", "Ignore it"), 0, false),
+                        new Chapter(null, 2, "Chapter two", List.of("Climb", "Hide"), null, false)
+                )))
+                .build();
+
+        StoryEntity firstSave = storyEntityRepo.save(new StoryEntity(story));
+        Long chapterOneOriginalId = idOfChapter(firstSave, 1);
+        Long chapterTwoOriginalId = idOfChapter(firstSave, 2);
+        assertThat(chapterOneOriginalId).isNotNull();
+        assertThat(chapterTwoOriginalId).isNotNull();
+
+        entityManager.flush();
+        entityManager.clear();
+
+        Story reloaded = storyEntityRepo.findById(firstSave.getId()).orElseThrow().toStory();
+        Chapter chapterTwo = reloaded.getChapters().stream()
+                .filter(c -> c.chapterNumber() == 2)
+                .findFirst()
+                .orElseThrow();
+        reloaded.removeChapter(chapterTwo);
+        reloaded.addChapter(new Chapter(
+                chapterTwo.id(),
+                chapterTwo.chapterNumber(),
+                chapterTwo.content(),
+                chapterTwo.choiceOptions(),
+                1,
+                chapterTwo.isFinalChapter()));
+        reloaded.setStatus(StoryStatus.IN_PROGRESS);
+
+        storyEntityRepo.save(new StoryEntity(reloaded));
+        entityManager.flush();
+        entityManager.clear();
+
+        StoryEntity finalState = storyEntityRepo.findById(firstSave.getId()).orElseThrow();
+        assertThat(finalState.getChapterEntities()).hasSize(2);
+        assertThat(idOfChapter(finalState, 1)).isEqualTo(chapterOneOriginalId);
+        assertThat(idOfChapter(finalState, 2)).isEqualTo(chapterTwoOriginalId);
+
+        var chapterTwoAfter = finalState.getChapterEntities().stream()
+                .filter(c -> c.getChapterNumber() == 2)
+                .findFirst()
+                .orElseThrow();
+        assertThat(chapterTwoAfter.getSelectedOption()).isEqualTo(1);
+        assertThat(chapterTwoAfter.getContent()).isEqualTo("Chapter two");
+    }
+
+    private static Long idOfChapter(StoryEntity entity, int chapterNumber) {
+        return entity.getChapterEntities().stream()
+                .filter(c -> c.getChapterNumber() == chapterNumber)
+                .findFirst()
+                .orElseThrow()
+                .getId();
+    }
 }
