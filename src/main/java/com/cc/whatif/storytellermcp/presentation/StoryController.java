@@ -1,5 +1,7 @@
 package com.cc.whatif.storytellermcp.presentation;
 
+import com.cc.whatif.storytellermcp.application.story.dto.ChapterRequest;
+import com.cc.whatif.storytellermcp.application.story.dto.StoryRequest;
 import com.cc.whatif.storytellermcp.application.story.service.StoryService;
 import com.cc.whatif.storytellermcp.domain.story.Story;
 import lombok.RequiredArgsConstructor;
@@ -12,15 +14,27 @@ import java.util.List;
 @RequiredArgsConstructor
 public class StoryController {
 
-	private final StoryService storyService;
+    private final StoryService storyService;
 
-	@GetMapping
-	public List<Story> getStories() {
-		return storyService.findStories();
-	}
+    @GetMapping
+    public List<Story> getStories() {
+        return storyService.findStories();
+    }
 
-	@PostMapping
-	public Story createStory(@RequestBody Story story) {
-		return storyService.saveStory(story);
-	}
+    @PostMapping
+    public Story createStory(@RequestBody StoryRequest storyRequest) {
+        return storyService.createStory(storyRequest);
+    }
+
+
+    @PutMapping
+    public Story updateStory(@RequestBody Story story) {
+        return storyService.saveStory(story);
+    }
+
+
+    @PostMapping("chapters")
+    public Story saveChapter(@RequestBody ChapterRequest chapterRequest) {
+        return storyService.saveChapter(chapterRequest);
+    }
 }

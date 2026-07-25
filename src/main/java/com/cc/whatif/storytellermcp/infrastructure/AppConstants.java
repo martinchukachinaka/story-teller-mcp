@@ -25,4 +25,24 @@ public class AppConstants {
             Structure: This is chapter 1 of a %s story. Follow "the pulse": wonder (introduce the world) → tension (introduce the problem) → choice.
             End with 2-3 selectable choice options — never free text, never a "wrong" choice.
             """;
+
+    public static final String VIRTUE_REVEAL_TEMPLATE =
+            "The virtue hidden in this story was **%s**. Did you spot it?";
+
+    public static final String NEXT_CHAPTER_TEMPLATE = """
+            The player chose: "%s"
+
+            Continue the story from that choice.
+
+            Hidden virtue (never name it explicitly): %s
+            Virtue approach: %s
+
+            Style:
+            - Silly and absurd, bold sound effects (e.g. **FLAP FLAP FLAP**)
+            - Physical comedy and dry humor, e.g. a character is always eating something — work this in naturally
+            - Villain is misunderstood/lonely, not truly evil
+            - Tight writing, no filler, PG-appropriate
+
+            Keep "the pulse": wonder → tension → choice — unless this is the story's final chapter, in which case land the resolution and let the virtue click into place, with no further choice options.
+            """;
 }

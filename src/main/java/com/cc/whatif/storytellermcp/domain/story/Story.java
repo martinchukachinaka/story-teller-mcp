@@ -17,37 +17,37 @@ import java.util.Set;
 @AllArgsConstructor
 public class Story {
 
-    Long id;
+    private Long id;
 
-    String title;
-
-    @Builder.Default
-    List<Genre> genreBlend = new ArrayList<>();
-
-    String setting;
-
-    Flavor flavor;
+    private String title;
 
     @Builder.Default
-    List<String> heroes = new ArrayList<>();
+    private List<Genre> genreBlend = new ArrayList<>();
 
-    VillainMode villainMode;
+    private String setting;
 
-    String villainDescription;
-
-    Tone tone;
-
-    StoryLength length;
-
-    Virtue virtue;
-
-    VirtueApproach virtueApproach;
+    private Flavor flavor;
 
     @Builder.Default
-    StoryStatus status = StoryStatus.IN_PROGRESS;
+    private List<String> heroes = new ArrayList<>();
+
+    private VillainMode villainMode;
+
+    private String villainDescription;
+
+    private Tone tone;
+
+    private StoryLength length;
+
+    private Virtue virtue;
+
+    private VirtueApproach virtueApproach;
 
     @Builder.Default
-    Set<Chapter> chapters = new HashSet<>();
+    private StoryStatus status = StoryStatus.IN_PROGRESS;
+
+    @Builder.Default
+    private Set<Chapter> chapters = new HashSet<>();
 
     public void addChapter(Chapter chapter) {
         chapters.add(chapter);
