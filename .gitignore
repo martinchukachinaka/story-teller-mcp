@@ -49,3 +49,4 @@ out/
 !.env.example
 
 learning/**
+/**/application-local.yaml
