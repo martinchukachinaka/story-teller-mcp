@@ -1,6 +1,7 @@
 package com.cc.whatif.storytellermcp.application.story.service;
 
 import com.cc.whatif.storytellermcp.application.story.dto.ChapterRequest;
+import com.cc.whatif.storytellermcp.application.story.dto.MakeChoiceRequest;
 import com.cc.whatif.storytellermcp.application.story.dto.StoryRequest;
 import com.cc.whatif.storytellermcp.application.story.repo.StoryRepo;
 import com.cc.whatif.storytellermcp.domain.story.Chapter;
@@ -8,6 +9,8 @@ import com.cc.whatif.storytellermcp.domain.story.Story;
 import com.cc.whatif.storytellermcp.infrastructure.exceptions.StoryException;
 import com.cc.whatif.storytellermcp.persistence.story.model.enums.*;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -20,6 +23,7 @@ import java.util.List;
 import java.util.Set;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
@@ -155,10 +159,7 @@ class StoryServiceImplTest {
 
     @Test
     void saveChapter_computesChapterNumberFromExistingChapters() {
-        var existing = Set.of(
-                new Chapter(10L, 1, "Ch1", List.of("a", "b"), null, false),
-                new Chapter(11L, 2, "Ch2", List.of("a", "b"), null, false)
-        );
+        var existing = createChapters();
         when(storyRepo.findById(1L)).thenReturn(storyInProgress(1L, existing));
         var request = new ChapterRequest(1L, "Ch3", List.of("a", "b"), false);
 
@@ -206,5 +207,91 @@ class StoryServiceImplTest {
 
         assertThrows(StoryException.class, () -> storyService.saveChapter(request));
         verify(storyRepo, never()).save(any());
+    }
+
+    @Nested
+    @DisplayName("Choices Tests")
+    class MakeChoice {
+        @Test
+        void shouldRejectIfStatusOfStoryIsNotAwaitingChoice() {
+            when(storyRepo.findById(1L)).thenReturn(storyInProgress(1L, createChapters()));
+            var request = new MakeChoiceRequest(1L, 1, 0);
+            assertThatThrownBy(() -> storyService.makeChoice(request))
+                    .isInstanceOf(StoryException.class)
+                    .hasMessageContaining("Story isn't awaiting a choice");
+        }
+
+        @Test
+        void shouldRejectChoiceIfChapterDoesNotExistInStory() {
+            when(storyRepo.findById(1L)).thenReturn(storyWithStatus(1L, StoryStatus.AWAITING_CHOICE, createChapters(1)));
+            var request = new MakeChoiceRequest(1L, 3, 0);
+            assertThatThrownBy(() -> storyService.makeChoice(request))
+                    .isInstanceOf(StoryException.class)
+                    .hasMessageContaining("Selected Chapter does not exist");
+        }
+
+        @Test
+        void shouldRejectIfSelectedOptionIsInvalid() {
+            when(storyRepo.findById(1L)).thenReturn(storyWithStatus(1L, StoryStatus.AWAITING_CHOICE, createChapters(1)));
+            var request = new MakeChoiceRequest(1L, 1, 5);
+            assertThatThrownBy(() -> storyService.makeChoice(request))
+                    .isInstanceOf(StoryException.class)
+                    .hasMessageContaining("Impossible Choice my friend");
+        }
+
+        @Test
+        void shouldRejectIfSelectedOptionIsAlreadyPresent() {
+            when(storyRepo.findById(1L)).thenReturn(
+                    Story.builder()
+                            .id(1L)
+                            .title("Test Story")
+                            .virtue(Virtue.KINDNESS)
+                            .virtueApproach(VirtueApproach.PLOT_DRIVEN)
+                            .status(StoryStatus.AWAITING_CHOICE)
+                            .chapters(Set.of(new Chapter(1L, 1, "Ch1", List.of("a", "b"), 0, true)))
+                            .build());
+            var request = new MakeChoiceRequest(1L, 1, 1);
+            assertThatThrownBy(() -> storyService.makeChoice(request))
+                    .isInstanceOf(StoryException.class)
+                    .hasMessageContaining("Choice has already been made");
+        }
+
+        @Test
+        void shouldPersistSelectedOptionAndSetStatusToInProgress() {
+            when(storyRepo.findById(1L)).thenReturn(
+                    storyWithStatus(1L, StoryStatus.AWAITING_CHOICE,
+                            Set.of(new Chapter(1L, 1, "Ch1", List.of("Chase it", "Ignore it"), null, false))));
+            var request = new MakeChoiceRequest(1L, 1, 1);
+
+            var saved = storyService.makeChoice(request);
+
+            ArgumentCaptor<Story> captor = ArgumentCaptor.forClass(Story.class);
+            verify(storyRepo).save(captor.capture());
+            var persisted = captor.getValue();
+
+            assertThat(persisted.getStatus()).isEqualTo(StoryStatus.IN_PROGRESS);
+            assertThat(persisted.getChapters()).hasSize(1);
+            var chapter = persisted.getChapters().iterator().next();
+            assertThat(chapter.chapterNumber()).isEqualTo(1);
+            assertThat(chapter.selectedOption()).isEqualTo(1);
+            assertThat(chapter.content()).isEqualTo("Ch1");
+            assertThat(chapter.choiceOptions()).containsExactly("Chase it", "Ignore it");
+            assertThat(saved.getStatus()).isEqualTo(StoryStatus.IN_PROGRESS);
+        }
+    }
+
+    private static Set<Chapter> createChapters() {
+        return createChapters(2);
+    }
+
+    private static Set<Chapter> createChapters(int numberOfChapters) {
+        Set<Chapter> chapters = new HashSet<>();
+        for (int chapterNo = 1; chapterNo < numberOfChapters; chapterNo++) {
+            chapters.add(
+                    new Chapter((long) chapterNo, chapterNo, "Ch" + chapterNo, List.of("a", "b"), null, false)
+            );
+        }
+        chapters.add(new Chapter((long) numberOfChapters, numberOfChapters, "Ch" + numberOfChapters, List.of("a", "b"), null, true));
+        return chapters;
     }
 }

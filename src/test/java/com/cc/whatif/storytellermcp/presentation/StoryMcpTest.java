@@ -1,6 +1,7 @@
 package com.cc.whatif.storytellermcp.presentation;
 
 import com.cc.whatif.storytellermcp.application.story.dto.ChapterRequest;
+import com.cc.whatif.storytellermcp.application.story.dto.MakeChoiceRequest;
 import com.cc.whatif.storytellermcp.application.story.dto.StoryRequest;
 import com.cc.whatif.storytellermcp.application.story.service.StoryService;
 import com.cc.whatif.storytellermcp.domain.story.Chapter;
@@ -134,5 +135,44 @@ class StoryMcpTest {
         assertThat(response.chapterNumber()).isZero();
         assertThat(response.storyStatus()).isNull();
         assertThat(response.virtueReveal()).isNull();
+    }
+
+    @Test
+    void makeChoice_buildsNextChapterPromptFromChosenOptionAndDelegatesToService() {
+        var story = fullyBuiltStory(1L);
+        story.addChapter(new Chapter(100L, 2, "Ch2 content",
+                List.of("Climb the tree", "Knock on the door"), 1, false));
+        story.setStatus(StoryStatus.IN_PROGRESS);
+        when(storyService.makeChoice(any(MakeChoiceRequest.class))).thenReturn(story);
+
+        var response = storyMcp.makeChoice(new MakeChoiceRequest(1L, 2, 1));
+
+        assertThat(response.storyId()).isEqualTo(1L);
+        assertThat(response.nextChapterNumber()).isEqualTo(3);
+        assertThat(response.status()).isEqualTo(StoryStatus.IN_PROGRESS);
+        assertThat(response.generationPrompt())
+                .contains("Knock on the door")
+                .contains("KINDNESS")
+                .contains(story.getVirtueApproach().getDescription());
+        assertThat(response.instruction())
+                .contains("save_chapter")
+                .contains("storyId=1");
+        assertThat(response.rejected()).isFalse();
+    }
+
+    @Test
+    void makeChoice_rejectsGracefullyWhenServiceThrowsStoryException() {
+        when(storyService.makeChoice(any(MakeChoiceRequest.class)))
+                .thenThrow(new StoryException("Story isn't awaiting a choice — story[1] is IN_PROGRESS"));
+
+        var response = storyMcp.makeChoice(new MakeChoiceRequest(1L, 2, 0));
+
+        assertThat(response.rejected()).isTrue();
+        assertThat(response.message()).isEqualTo("Story isn't awaiting a choice — story[1] is IN_PROGRESS");
+        assertThat(response.storyId()).isNull();
+        assertThat(response.nextChapterNumber()).isZero();
+        assertThat(response.status()).isNull();
+        assertThat(response.generationPrompt()).isNull();
+        assertThat(response.instruction()).isNull();
     }
 }

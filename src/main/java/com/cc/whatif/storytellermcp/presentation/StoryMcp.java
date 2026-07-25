@@ -1,9 +1,6 @@
 package com.cc.whatif.storytellermcp.presentation;
 
-import com.cc.whatif.storytellermcp.application.story.dto.ChapterRequest;
-import com.cc.whatif.storytellermcp.application.story.dto.ChapterResponse;
-import com.cc.whatif.storytellermcp.application.story.dto.StoryRequest;
-import com.cc.whatif.storytellermcp.application.story.dto.StoryResponse;
+import com.cc.whatif.storytellermcp.application.story.dto.*;
 import com.cc.whatif.storytellermcp.application.story.service.StoryService;
 import com.cc.whatif.storytellermcp.domain.story.Chapter;
 import com.cc.whatif.storytellermcp.infrastructure.exceptions.StoryException;
@@ -15,6 +12,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.List;
 
+import static com.cc.whatif.storytellermcp.infrastructure.AppConstants.NEXT_CHAPTER_TEMPLATE;
 import static com.cc.whatif.storytellermcp.infrastructure.AppConstants.STORY_TEMPLATE;
 import static com.cc.whatif.storytellermcp.infrastructure.AppConstants.VIRTUE_REVEAL_TEMPLATE;
 import static java.util.stream.Collectors.joining;
@@ -89,6 +87,52 @@ public class StoryMcp {
             return new ChapterResponse(story.getId(), chapterNumber, story.getStatus(), virtueReveal);
         } catch (StoryException e) {
             return ChapterResponse.reject(e.getMessage());
+        }
+    }
+
+    @McpTool(name = "make_choice",
+            description = """
+                    Records which option the host selected for a story that's currently waiting on a choice, then returns 
+                    writing guidance for the chapter that follows. Call this only right after save_chapter has returned 
+                    storyStatus: AWAITING_CHOICE — the choiceOptions from that response is what selectedOption indexes into. 
+                    On success, the story moves back to IN_PROGRESS and the response includes nextChapterNumber and 
+                    a generationPrompt for that chapter; write it and call save_chapter next. If the story isn't found, 
+                    isn't currently awaiting a choice, or selectedOption is out of range, the response comes back 
+                    with rejected: true and an explanatory message instead of a protocol error.
+                    """)
+    public MakeChoiceResponse makeChoice(@McpToolParam(description = "The player's selected option, for a story currently awaiting a choice") MakeChoiceRequest choice) {
+        try {
+            var story = storyService.makeChoice(choice);
+            int nextChapterNumber = choice.chapterNumber() + 1;
+
+            var answeredChapter = story.getChapters().stream()
+                    .filter(c -> c.chapterNumber() == choice.chapterNumber())
+                    .findFirst()
+                    .orElseThrow();
+            var chosenOptionText = answeredChapter.choiceOptions().get(choice.selectedOption());
+
+            var generationPrompt = NEXT_CHAPTER_TEMPLATE.formatted(
+                    chosenOptionText,
+                    story.getVirtue(),
+                    story.getVirtueApproach().getDescription()
+            );
+            var instruction = """
+                    Generate chapter %s following the prompt above,
+                    weaving in the hidden virtue per the given approach without ever naming it.
+                    Then call save_chapter with storyId=%s, the generated content, 2-3 choiceOptions,
+                    and isFinalChapter=false — or isFinalChapter=true with no choiceOptions if this
+                    chapter concludes the story.
+                    """.formatted(nextChapterNumber, story.getId());
+
+            return new MakeChoiceResponse(
+                    story.getId(),
+                    nextChapterNumber,
+                    story.getStatus(),
+                    generationPrompt,
+                    instruction
+            );
+        } catch (StoryException e) {
+            return MakeChoiceResponse.reject(e.getMessage());
         }
     }
 }
