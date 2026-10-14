@@ -10,6 +10,8 @@ const apiToken = requireEnv('CONFLUENCE_API_TOKEN');
 const spaceId = requireEnv('CONFLUENCE_SPACE_ID');
 const docsDir = process.env.DOCS_DIR ?? 'docs';
 const dryRun = process.env.DRY_RUN === 'true';
+// Optional, e.g. https://github.com/owner/repo/blob/main: links to repo files outside the docs folder point there.
+const repoBlobUrl = process.env.REPO_BLOB_URL?.replace(/\/$/, '');
 
 const authHeader = 'Basic ' + Buffer.from(`${email}:${apiToken}`).toString('base64');
 
@@ -21,11 +23,15 @@ const SOURCE_PROPERTY = 'docs_sync_source';
 const HASH_PROPERTY = 'docs_sync_hash';
 
 const ROOT_FOLDER = '';
+const FOLDER_INDEX_NAMES = ['index.md', 'readme.md'];
 const FOLDER_PLACEHOLDER_BODY = '<ac:structured-macro ac:name="children" ac:schema-version="2" />';
 
 // Property reads run this many at a time: fast enough for ~100 pages, small enough to stay clear of Confluence's rate limits.
 const PROPERTY_READS_PER_BATCH = 10;
 const MAX_RETRIES = 3;
+
+// Languages the Confluence code macro highlights. Any other (mermaid, say) shows as plain text, titled with its name.
+const CODE_MACRO_LANGUAGES = new Set(['bash', 'java', 'json', 'sql', 'xml', 'text']);
 
 await syncDocs();
 
@@ -67,9 +73,10 @@ async function findMarkdownFiles(dir) {
     .sort();
 }
 
-// Every folder becomes a page, so the page tree in Confluence mirrors the folders in docs/. A folder's index.md supplies
-// that page's title and content; without one, the page is a placeholder listing its children. The root docs/index.md is
-// an ordinary page, since the root folder has no page of its own.
+// Every folder becomes a page, so the page tree in Confluence mirrors the folders in docs/. A folder's index.md or
+// README.md supplies that page's title and content (with both, the other one is an ordinary child page); without one,
+// the page is a placeholder listing its children. The root folder has no page of its own, so its index or README is an
+// ordinary page.
 // Sorted by depth so each parent is published before its children and its page ID is known.
 function buildPageTree(docs, titlesByFile) {
   const nodes = [];
@@ -77,7 +84,8 @@ function buildPageTree(docs, titlesByFile) {
 
   for (const doc of docs) {
     const folder = parentFolderOf(doc.source);
-    if (folder !== ROOT_FOLDER && path.basename(doc.source) === 'index.md') {
+    const isFolderIndex = FOLDER_INDEX_NAMES.includes(path.basename(doc.source).toLowerCase());
+    if (folder !== ROOT_FOLDER && isFolderIndex && !indexDocsByFolder.has(folder)) {
       indexDocsByFolder.set(folder, doc);
       continue;
     }
@@ -148,22 +156,72 @@ function splitTitle(markdown, file) {
   return { title: path.basename(file, '.md'), content: markdown };
 }
 
-// Confluence storage format is XHTML: void tags must be self-closed, or the API rejects the body as malformed.
+// Confluence storage format is XHTML: void tags must be self-closed, or the API rejects the body as malformed. They are
+// closed where they are produced rather than over the finished page, so code blocks keep their contents exactly.
 function toStorageFormat(markdown, file, titlesByFile) {
   const converter = new Marked({
     renderer: {
       link(token) {
-        const targetTitle = titlesByFile.get(linkedDocPath(file, token.href));
-        if (!targetTitle) {
-          return false;
-        }
         const linkText = this.parser.parseInline(token.tokens);
-        return `<ac:link><ri:page ri:content-title="${escapeXml(targetTitle)}" /><ac:link-body>${linkText}</ac:link-body></ac:link>`;
+        const targetTitle = titlesByFile.get(linkedDocPath(file, token.href));
+        if (targetTitle) {
+          return `<ac:link><ri:page ri:content-title="${escapeXml(targetTitle)}" /><ac:link-body>${linkText}</ac:link-body></ac:link>`;
+        }
+        const repoUrl = repoFileUrl(file, token.href);
+        if (repoUrl) {
+          return `<a href="${escapeXml(repoUrl)}">${linkText}</a>`;
+        }
+        return false;
+      },
+      code(token) {
+        return codeMacro(token.text, token.lang);
+      },
+      br() {
+        return '<br />';
+      },
+      hr() {
+        return '<hr />\n';
+      },
+      image(token) {
+        return `<img src="${escapeXml(token.href)}" alt="${escapeXml(token.text)}" />`;
+      },
+      html(token) {
+        return closeVoidTags(token.text);
       },
     },
   });
-  const html = converter.parse(markdown);
+  return converter.parse(markdown);
+}
+
+function closeVoidTags(html) {
   return html.replace(/<(br|hr|img)([^>]*?)\s*\/?>/g, '<$1$2 />');
+}
+
+function codeMacro(code, language) {
+  let parameter = '';
+  if (CODE_MACRO_LANGUAGES.has(language)) {
+    parameter = `<ac:parameter ac:name="language">${language}</ac:parameter>`;
+  } else if (language) {
+    parameter = `<ac:parameter ac:name="title">${escapeXml(language)}</ac:parameter>`;
+  }
+  // A CDATA section ends at the first "]]>", so one inside the code is split across two sections.
+  const cdata = code.replaceAll(']]>', ']]]]><![CDATA[>');
+  return `<ac:structured-macro ac:name="code">${parameter}<ac:plain-text-body><![CDATA[${cdata}]]></ac:plain-text-body></ac:structured-macro>\n`;
+}
+
+// Confluence has no copy of files outside the docs folder (source code, the root README), so links to them go to GitHub.
+// Anything with a scheme (https:, mailto:), an anchor in the same page, or a path leaving the repo is left alone.
+function repoFileUrl(fromFile, href) {
+  if (!repoBlobUrl || /^[a-z][a-z0-9+.-]*:/i.test(href) || href.startsWith('#')) {
+    return undefined;
+  }
+  const [filePart, anchor] = href.split('#');
+  const repoPath = path.relative(process.cwd(), path.join(path.dirname(fromFile), decodeURIComponent(filePart)));
+  if (repoPath.startsWith('..')) {
+    return undefined;
+  }
+  const url = `${repoBlobUrl}/${encodeURI(repoPath.split(path.sep).join('/'))}`;
+  return anchor ? `${url}#${anchor}` : url;
 }
 
 // Anchors are dropped: Confluence generates its own heading anchors, so "#install" would not match.
