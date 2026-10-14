@@ -9,6 +9,11 @@ on:
       - 'docs/**'
   # Adds a "Run workflow" button in the Actions tab, handy while iterating.
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'List pages without sending them to Confluence'
+        type: boolean
+        default: true
 
 # A workflow is made of jobs; each job runs on a fresh virtual machine (a "runner").
 jobs:
@@ -24,6 +29,8 @@ jobs:
           echo "Event:  ${{ github.event_name }}"
           echo "Branch: ${{ github.ref_name }}"
           echo "Commit: ${{ github.sha }}"
+          # Inputs only exist on manual runs; on a push this prints empty, which counts as false.
+          echo "Dry run: ${{ inputs.dry_run }}"
 
       - name: List docs to sync
         run: find docs -name '*.md' -print
