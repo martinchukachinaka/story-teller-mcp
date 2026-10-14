@@ -1,0 +1,8 @@
+{
+  "name": "docs-sync",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "marked": "^18.1.1"
+  }
+}

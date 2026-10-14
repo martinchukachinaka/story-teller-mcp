@@ -50,3 +50,6 @@ out/
 
 learning/**
 /**/application-local.yaml
+
+### Node ###
+node_modules/
