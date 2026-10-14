@@ -1,0 +1,29 @@
+# Learning scaffold: comments explain each concept; trim them once they feel obvious.
+
+name: Docs Sync
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'docs/**'
+  # Adds a "Run workflow" button in the Actions tab, handy while iterating.
+  workflow_dispatch:
+
+# A workflow is made of jobs; each job runs on a fresh virtual machine (a "runner").
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Show what triggered this run
+        run: |
+          echo "Event:  ${{ github.event_name }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+
+      - name: List docs to sync
+        run: find docs -name '*.md' -print
