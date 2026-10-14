@@ -40,3 +40,12 @@ jobs:
           EVENT_JSON: ${{ toJSON(github.event) }}
         run: echo "$EVENT_JSON"
 
+      - name: Check Confluence credentials
+        env:
+          CONFLUENCE_EMAIL: ${{ secrets.CONFLUENCE_EMAIL }}
+          CONFLUENCE_API_TOKEN: ${{ secrets.CONFLUENCE_API_TOKEN }}
+          CONFLUENCE_BASE_URL: ${{ vars.CONFLUENCE_BASE_URL }}
+          CONFLUENCE_SPACE_ID: ${{ vars.CONFLUENCE_SPACE_ID }}
+        run: |
+          curl -s --fail-with-body -u "$CONFLUENCE_EMAIL:$CONFLUENCE_API_TOKEN" \
+            "$CONFLUENCE_BASE_URL/wiki/api/v2/spaces/$CONFLUENCE_SPACE_ID" | jq '{id, key, name}'
