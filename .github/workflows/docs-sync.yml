@@ -28,3 +28,6 @@ jobs:
       - name: List docs to sync
         run: find docs -name '*.md' -print
 
+      - name: About this push
+        run: echo '${{ toJSON(github.event) }}'
+
