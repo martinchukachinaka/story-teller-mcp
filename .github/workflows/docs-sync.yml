@@ -36,5 +36,7 @@ jobs:
         run: find docs -name '*.md' -print
 
       - name: About this push
-        run: echo '${{ toJSON(github.event) }}'
+        env:
+          EVENT_JSON: ${{ toJSON(github.event) }}
+        run: echo "$EVENT_JSON"
 
