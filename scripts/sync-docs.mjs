@@ -13,11 +13,15 @@ const dryRun = process.env.DRY_RUN === 'true';
 
 const authHeader = 'Basic ' + Buffer.from(`${email}:${apiToken}`).toString('base64');
 
-// Each synced page carries this property, holding the doc's path relative to the docs folder.
-// It ties a doc to its page even after the title changes, without writing anything back to the repo.
+// Each synced page carries this property, holding the doc's path relative to the docs folder ("contact/contact.md"),
+// or the folder's path for a folder page ("contact/"). It ties a page to its source even after the title changes,
+// without writing anything back to the repo.
 const SOURCE_PROPERTY = 'docs_sync_source';
-// A hash of the title and converted body as last published, so unchanged docs are skipped instead of adding an empty page version.
+// A hash of the title, parent and converted body as last published, so unchanged pages are skipped instead of adding an empty version.
 const HASH_PROPERTY = 'docs_sync_hash';
+
+const ROOT_FOLDER = '';
+const FOLDER_PLACEHOLDER_BODY = '<ac:structured-macro ac:name="children" ac:schema-version="2" />';
 
 // Property reads run this many at a time: fast enough for ~100 pages, small enough to stay clear of Confluence's rate limits.
 const PROPERTY_READS_PER_BATCH = 10;
@@ -28,6 +32,9 @@ await syncDocs();
 async function syncDocs() {
   const markdownFiles = await findMarkdownFiles(docsDir);
   console.log(`Found ${markdownFiles.length} markdown file(s) in ${docsDir}${dryRun ? ' (dry run)' : ''}`);
+  if (markdownFiles.length === 0) {
+    throw new Error(`No markdown files in ${docsDir}; refusing to sync, as that would trash every synced page`);
+  }
 
   const docs = [];
   for (const file of markdownFiles) {
@@ -37,12 +44,19 @@ async function syncDocs() {
   }
   const titlesByFile = new Map(docs.map((doc) => [doc.file, doc.title]));
 
-  const syncedPagesBySource = await findSyncedPages();
+  const pageTree = buildPageTree(docs, titlesByFile);
+  failOnDuplicateTitles(pageTree);
 
-  for (const doc of docs) {
-    const body = toStorageFormat(doc.content, doc.file, titlesByFile);
-    await publishPage(doc, body, syncedPagesBySource.get(doc.source));
+  const syncedPagesBySource = await findSyncedPages();
+  const pageIdsBySource = new Map([[ROOT_FOLDER, await spaceHomepageId()]]);
+
+  for (const node of pageTree) {
+    const parentId = pageIdsBySource.get(node.parentFolder);
+    const pageId = await publishPage(node, parentId, syncedPagesBySource.get(node.source));
+    pageIdsBySource.set(node.source, pageId);
   }
+
+  await trashRemovedPages(syncedPagesBySource, new Set(pageIdsBySource.values()));
 }
 
 async function findMarkdownFiles(dir) {
@@ -51,6 +65,78 @@ async function findMarkdownFiles(dir) {
     .filter((entry) => entry.endsWith('.md'))
     .map((entry) => path.join(dir, entry))
     .sort();
+}
+
+// Every folder becomes a page, so the page tree in Confluence mirrors the folders in docs/. A folder's index.md supplies
+// that page's title and content; without one, the page is a placeholder listing its children. The root docs/index.md is
+// an ordinary page, since the root folder has no page of its own.
+// Sorted by depth so each parent is published before its children and its page ID is known.
+function buildPageTree(docs, titlesByFile) {
+  const nodes = [];
+  const indexDocsByFolder = new Map();
+
+  for (const doc of docs) {
+    const folder = parentFolderOf(doc.source);
+    if (folder !== ROOT_FOLDER && path.basename(doc.source) === 'index.md') {
+      indexDocsByFolder.set(folder, doc);
+      continue;
+    }
+    nodes.push({
+      source: doc.source,
+      file: doc.file,
+      title: doc.title,
+      body: toStorageFormat(doc.content, doc.file, titlesByFile),
+      parentFolder: folder,
+    });
+  }
+
+  for (const folder of foldersContaining(docs)) {
+    const indexDoc = indexDocsByFolder.get(folder);
+    nodes.push({
+      source: folder,
+      file: indexDoc ? indexDoc.file : path.join(docsDir, folder),
+      title: indexDoc ? indexDoc.title : path.basename(folder),
+      body: indexDoc ? toStorageFormat(indexDoc.content, indexDoc.file, titlesByFile) : FOLDER_PLACEHOLDER_BODY,
+      parentFolder: parentFolderOf(folder),
+    });
+  }
+
+  return nodes.sort((a, b) => depthOf(a.source) - depthOf(b.source));
+}
+
+function foldersContaining(docs) {
+  const folders = new Set();
+  for (const doc of docs) {
+    let folder = parentFolderOf(doc.source);
+    while (folder !== ROOT_FOLDER) {
+      folders.add(folder);
+      folder = parentFolderOf(folder);
+    }
+  }
+  return folders;
+}
+
+// Works for both kinds of source: "contact/contact.md" and "guides/setup/" both have the parent folder they sit in.
+function parentFolderOf(source) {
+  const parent = path.dirname(source.replace(/\/$/, ''));
+  return parent === '.' ? ROOT_FOLDER : `${parent}/`;
+}
+
+function depthOf(source) {
+  return source.split('/').filter(Boolean).length;
+}
+
+// Confluence titles are unique per space, so two pages with the same title would overwrite each other's links.
+function failOnDuplicateTitles(pageTree) {
+  const sourcesByTitle = new Map();
+  for (const node of pageTree) {
+    const title = node.title.toLowerCase();
+    const clashingSource = sourcesByTitle.get(title);
+    if (clashingSource !== undefined) {
+      throw new Error(`"${node.title}" is the title of both ${clashingSource} and ${node.source}; page titles must be unique in a Confluence space`);
+    }
+    sourcesByTitle.set(title, node.source);
+  }
 }
 
 // Only a heading at the very top is the page title; a heading further down belongs to a section and stays in the body.
@@ -132,42 +218,67 @@ async function syncPropertiesOf(pageId) {
   return { sourceProperty, hashProperty };
 }
 
-async function publishPage(doc, body, syncedPage) {
-  const hash = contentHash(doc.title, body);
+async function spaceHomepageId() {
+  const space = await confluence('GET', `/wiki/api/v2/spaces/${spaceId}`);
+  return space.homepageId;
+}
+
+async function publishPage(node, parentId, syncedPage) {
+  const hash = contentHash(node.title, parentId, node.body);
   if (syncedPage && syncedPage.hashProperty?.value === hash) {
-    console.log(`Unchanged "${doc.title}" (page ${syncedPage.page.id}) from ${doc.file}`);
-    return;
+    console.log(`Unchanged "${node.title}" (page ${syncedPage.page.id}) from ${node.file}`);
+    return syncedPage.page.id;
   }
 
-  const target = syncedPage ?? (await findPageByTitle(doc.title));
+  const target = syncedPage ?? (await findPageByTitle(node.title));
 
   if (dryRun) {
-    console.log(`[dry run] would ${target ? `update page ${target.page.id}` : 'create a page'} as "${doc.title}" from ${doc.file}`);
-    return;
+    const parent = node.parentFolder || 'the space home page';
+    console.log(`[dry run] would ${target ? `update page ${target.page.id}` : 'create a page'} as "${node.title}" under ${parent} from ${node.file}`);
+    return target?.page.id;
   }
 
   let pageId;
   if (target) {
     pageId = target.page.id;
     const nextVersion = target.page.version.number + 1;
-    await updatePage(pageId, doc.title, body, nextVersion);
-    console.log(`Updated "${doc.title}" (page ${pageId}, version ${nextVersion}) from ${doc.file}`);
+    await updatePage(pageId, parentId, node.title, node.body, nextVersion);
+    console.log(`Updated "${node.title}" (page ${pageId}, version ${nextVersion}) from ${node.file}`);
   } else {
-    const created = await createPage(doc.title, body);
+    const created = await createPage(parentId, node.title, node.body);
     pageId = created.id;
-    console.log(`Created "${doc.title}" (page ${pageId}) from ${doc.file}`);
+    console.log(`Created "${node.title}" (page ${pageId}) from ${node.file}`);
   }
 
   // A page found by title may be linked to an older path: the doc was moved, so the link is re-pointed rather than duplicated.
-  if (target?.sourceProperty?.value !== doc.source) {
-    await saveProperty(pageId, SOURCE_PROPERTY, doc.source, target?.sourceProperty);
-    console.log(`Linked page ${pageId} to ${doc.source}`);
+  if (target?.sourceProperty?.value !== node.source) {
+    await saveProperty(pageId, SOURCE_PROPERTY, node.source, target?.sourceProperty);
+    console.log(`Linked page ${pageId} to ${node.source}`);
   }
   await saveProperty(pageId, HASH_PROPERTY, hash, target?.hashProperty);
+  return pageId;
 }
 
-function contentHash(title, body) {
-  return createHash('sha256').update(JSON.stringify([title, body])).digest('hex');
+// A synced page that was not published this run lost its doc or folder. Checking published page IDs rather than sources
+// keeps a moved doc safe: its page was re-linked to the new path above. Trashed pages can still be restored from the
+// space's trash. Deepest first, so a folder page is never trashed while it still has synced children.
+async function trashRemovedPages(syncedPagesBySource, publishedPageIds) {
+  const removedPages = [...syncedPagesBySource.entries()]
+    .filter(([, synced]) => !publishedPageIds.has(synced.page.id))
+    .sort(([sourceA], [sourceB]) => depthOf(sourceB) - depthOf(sourceA));
+
+  for (const [source, synced] of removedPages) {
+    if (dryRun) {
+      console.log(`[dry run] would trash "${synced.page.title}" (page ${synced.page.id}); ${source} no longer exists`);
+      continue;
+    }
+    await confluence('DELETE', `/wiki/api/v2/pages/${synced.page.id}`);
+    console.log(`Trashed "${synced.page.title}" (page ${synced.page.id}); ${source} no longer exists`);
+  }
+}
+
+function contentHash(title, parentId, body) {
+  return createHash('sha256').update(JSON.stringify([title, parentId, body])).digest('hex');
 }
 
 function saveProperty(pageId, key, value, existing) {
@@ -192,18 +303,20 @@ async function findPageByTitle(title) {
   return { page, sourceProperty, hashProperty };
 }
 
-function createPage(title, body) {
+function createPage(parentId, title, body) {
   return confluence('POST', '/wiki/api/v2/pages', {
     spaceId,
+    parentId,
     status: 'current',
     title,
     body: { representation: 'storage', value: body },
   });
 }
 
-function updatePage(pageId, title, body, versionNumber) {
+function updatePage(pageId, parentId, title, body, versionNumber) {
   return confluence('PUT', `/wiki/api/v2/pages/${pageId}`, {
     id: pageId,
+    parentId,
     status: 'current',
     title,
     body: { representation: 'storage', value: body },
@@ -223,6 +336,9 @@ async function confluence(method, apiPath, payload) {
       body: payload ? JSON.stringify(payload) : undefined,
     });
 
+    if (response.status === 204) {
+      return undefined;
+    }
     if (response.ok) {
       return response.json();
     }
