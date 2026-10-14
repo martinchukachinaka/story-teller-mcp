@@ -28,6 +28,3 @@ jobs:
       - name: List docs to sync
         run: find docs -name '*.md' -print
 
-      - name: wahala time
-        run: exit 1
-
