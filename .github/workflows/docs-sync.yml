@@ -79,4 +79,6 @@ jobs:
           CONFLUENCE_BASE_URL: ${{ vars.CONFLUENCE_BASE_URL }}
           CONFLUENCE_SPACE_ID: ${{ vars.CONFLUENCE_SPACE_ID }}
           DRY_RUN: ${{ inputs.dry_run }}
+          # The Mermaid app by Narva is installed on this Confluence site, so diagrams render instead of showing as code.
+          MERMAID_APP: narva
         run: node scripts/sync-docs.mjs

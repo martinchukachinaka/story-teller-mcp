@@ -12,6 +12,9 @@ const docsDir = process.env.DOCS_DIR ?? 'docs';
 const dryRun = process.env.DRY_RUN === 'true';
 // Optional, e.g. https://github.com/owner/repo/blob/main: links to repo files outside the docs folder point there.
 const repoBlobUrl = process.env.REPO_BLOB_URL?.replace(/\/$/, '');
+// Optional: "narva" draws mermaid blocks with the Mermaid app by Narva, which must be installed on the Confluence site.
+// Unset, they show as code.
+const mermaidApp = process.env.MERMAID_APP;
 
 const authHeader = 'Basic ' + Buffer.from(`${email}:${apiToken}`).toString('base64');
 
@@ -32,6 +35,10 @@ const MAX_RETRIES = 3;
 
 // Languages the Confluence code macro highlights. Any other (mermaid, say) shows as plain text, titled with its name.
 const CODE_MACRO_LANGUAGES = new Set(['bash', 'java', 'json', 'sql', 'xml', 'text']);
+
+// The Narva app's Forge extension, copied from a diagram inserted by hand. Forge app and environment IDs are the same on
+// every site that installs the app.
+const NARVA_MERMAID_EXTENSION = '336440d6-2d95-4275-833f-6351e86634e3/e5743d37-53d6-4daa-a3a1-acca68790e69/static/mermaid-diagram';
 
 await syncDocs();
 
@@ -159,6 +166,7 @@ function splitTitle(markdown, file) {
 // Confluence storage format is XHTML: void tags must be self-closed, or the API rejects the body as malformed. They are
 // closed where they are produced rather than over the finished page, so code blocks keep their contents exactly.
 function toStorageFormat(markdown, file, titlesByFile) {
+  let mermaidDiagrams = 0;
   const converter = new Marked({
     renderer: {
       link(token) {
@@ -174,6 +182,10 @@ function toStorageFormat(markdown, file, titlesByFile) {
         return false;
       },
       code(token) {
+        if (token.lang === 'mermaid' && mermaidApp === 'narva') {
+          mermaidDiagrams++;
+          return narvaMermaidMacro(token.text, `${file}#${mermaidDiagrams}`);
+        }
         return codeMacro(token.text, token.lang);
       },
       br() {
@@ -207,6 +219,35 @@ function codeMacro(code, language) {
   // A CDATA section ends at the first "]]>", so one inside the code is split across two sections.
   const cdata = code.replaceAll(']]>', ']]]]><![CDATA[>');
   return `<ac:structured-macro ac:name="code">${parameter}<ac:plain-text-body><![CDATA[${cdata}]]></ac:plain-text-body></ac:structured-macro>\n`;
+}
+
+// The markup Confluence stores for a diagram made in the app's editor, minus the page and account it was made on, which
+// Confluence supplies when it renders. The local id is derived from the doc and the diagram's position rather than
+// random, so an unchanged doc converts to the same body and is skipped.
+function narvaMermaidMacro(diagram, diagramKey) {
+  const localId = uuidFrom(diagramKey);
+  const node =
+    '<ac:adf-node type="extension">' +
+    `<ac:adf-attribute key="extension-key">${NARVA_MERMAID_EXTENSION}</ac:adf-attribute>` +
+    '<ac:adf-attribute key="extension-type">com.atlassian.ecosystem</ac:adf-attribute>' +
+    '<ac:adf-attribute key="parameters">' +
+    `<ac:adf-parameter key="local-id">${localId}</ac:adf-parameter>` +
+    `<ac:adf-parameter key="extension-id">ari:cloud:ecosystem::extension/${NARVA_MERMAID_EXTENSION}</ac:adf-parameter>` +
+    '<ac:adf-parameter key="extension-title">Mermaid Diagram</ac:adf-parameter>' +
+    '<ac:adf-parameter key="layout">extension</ac:adf-parameter>' +
+    '<ac:adf-parameter key="forge-environment">PRODUCTION</ac:adf-parameter>' +
+    `<ac:adf-parameter key="guest-params"><ac:adf-parameter key="code">${escapeXml(diagram)}</ac:adf-parameter></ac:adf-parameter>` +
+    '</ac:adf-attribute>' +
+    '<ac:adf-attribute key="text">Mermaid Diagram</ac:adf-attribute>' +
+    '<ac:adf-attribute key="layout">default</ac:adf-attribute>' +
+    `<ac:adf-attribute key="local-id">${localId}</ac:adf-attribute>` +
+    '</ac:adf-node>';
+  return `<ac:adf-extension>${node}<ac:adf-fallback>${node}</ac:adf-fallback></ac:adf-extension>\n`;
+}
+
+function uuidFrom(seed) {
+  const hex = createHash('sha256').update(seed).digest('hex');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
 }
 
 // Confluence has no copy of files outside the docs folder (source code, the root README), so links to them go to GitHub.
