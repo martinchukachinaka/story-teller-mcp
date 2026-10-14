@@ -17,10 +17,17 @@ on:
         type: boolean
         default: true
 
+# One sync at a time: a second run waits, so two runs never race to bump the same page version.
+concurrency:
+  group: docs-sync
+  cancel-in-progress: false
+
 # A workflow is made of jobs; each job runs on a fresh virtual machine (a "runner").
 jobs:
   sync:
     runs-on: ubuntu-latest
+    # The default is 6 hours; a stuck run should fail fast instead of holding the concurrency group.
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
