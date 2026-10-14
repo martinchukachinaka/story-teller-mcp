@@ -25,5 +25,9 @@ jobs:
           echo "Branch: ${{ github.ref_name }}"
           echo "Commit: ${{ github.sha }}"
 
+      - name: wahala time
+        run: exit 1
+
       - name: List docs to sync
         run: find docs -name '*.md' -print
+
