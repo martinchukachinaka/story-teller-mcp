@@ -33,10 +33,15 @@ const MAX_RETRIES = 3;
 // Languages the Confluence code macro highlights. Any other shows as plain text, titled with its name.
 const CODE_MACRO_LANGUAGES = new Set(['bash', 'java', 'json', 'sql', 'xml', 'text']);
 
-// Mermaid diagrams are drawn by the Mermaid app by Narva, which must be installed on the Confluence site. This is its
-// Forge extension, copied from a diagram inserted by hand. Forge app and environment IDs are the same on every site
-// that installs the app.
+// The Mermaid app by Narva's Forge extension, copied from a diagram inserted by hand. Forge app and environment IDs are
+// the same on every site that installs the app.
 const NARVA_MERMAID_EXTENSION = '336440d6-2d95-4275-833f-6351e86634e3/e5743d37-53d6-4daa-a3a1-acca68790e69/static/mermaid-diagram';
+
+// Confluence apps that draw Mermaid diagrams, by their MERMAID_APP name. The app must be installed on the Confluence
+// site; with MERMAID_APP unset, diagrams show as code. Another app needs a macro function like narvaMermaidMacro and an
+// entry here.
+const MERMAID_APP_MACROS = new Map([['narva', narvaMermaidMacro]]);
+const mermaidMacro = mermaidAppMacro(process.env.MERMAID_APP);
 
 await syncDocs();
 
@@ -180,9 +185,9 @@ function toStorageFormat(markdown, file, titlesByFile) {
         return false;
       },
       code(token) {
-        if (token.lang === 'mermaid') {
+        if (token.lang === 'mermaid' && mermaidMacro) {
           mermaidDiagrams++;
-          return narvaMermaidMacro(token.text, `${file}#${mermaidDiagrams}`);
+          return mermaidMacro(token.text, `${file}#${mermaidDiagrams}`);
         }
         return codeMacro(token.text, token.lang);
       },
@@ -217,6 +222,18 @@ function codeMacro(code, language) {
   // A CDATA section ends at the first "]]>", so one inside the code is split across two sections.
   const cdata = code.replaceAll(']]>', ']]]]><![CDATA[>');
   return `<ac:structured-macro ac:name="code">${parameter}<ac:plain-text-body><![CDATA[${cdata}]]></ac:plain-text-body></ac:structured-macro>\n`;
+}
+
+function mermaidAppMacro(appName) {
+  if (!appName) {
+    return undefined;
+  }
+  const macro = MERMAID_APP_MACROS.get(appName.toLowerCase());
+  if (!macro) {
+    const supported = [...MERMAID_APP_MACROS.keys()].join(', ');
+    throw new Error(`Unknown MERMAID_APP "${appName}". Supported: ${supported}; or leave it unset to show diagrams as code`);
+  }
+  return macro;
 }
 
 // The markup Confluence stores for a diagram made in the app's editor, minus the page and account it was made on, which

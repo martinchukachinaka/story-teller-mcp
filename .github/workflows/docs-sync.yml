@@ -79,4 +79,7 @@ jobs:
           CONFLUENCE_BASE_URL: ${{ vars.CONFLUENCE_BASE_URL }}
           CONFLUENCE_SPACE_ID: ${{ vars.CONFLUENCE_SPACE_ID }}
           DRY_RUN: ${{ inputs.dry_run }}
+          # The Confluence app that draws Mermaid diagrams (e.g. narva); unset, they show as code. A repo variable, so
+          # each repo turns it on once its Confluence site has the app.
+          MERMAID_APP: ${{ vars.MERMAID_APP }}
         run: node scripts/sync-docs.mjs
