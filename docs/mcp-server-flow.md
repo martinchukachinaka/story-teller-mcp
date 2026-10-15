@@ -2,7 +2,7 @@
 
 How a story moves between the player, Claude Desktop and the Story Teller MCP server.
 
-The server never calls an LLM itself. It owns the story **state** and the **prompts**; Claude Desktop (the MCP client)
+The server never calls an LLM itself. It owns the story **state** and the **prompts**; Claude (the MCP client)
 does the writing. Each tool response hands Claude a generation prompt plus an instruction saying which tool to call
 next, so the conversation is steered by the server.
 
@@ -26,7 +26,7 @@ sequenceDiagram
     participant Service as StoryServiceImpl
     participant Repo as StoryRepoImpl / JPA
     participant Db as PostgreSQL
-    Player ->> Claude: "Let's make a story!!"
+    Player ->> Claude: "Let's make a story!"
     Claude ->> Player: Ask for genre, setting, flavor, heroes,<br/>villain, tone, length (one at a time)
     Player ->> Claude: Answers (or "surprise me")
     Claude ->> Mcp: start_story(StoryRequest)
