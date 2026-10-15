@@ -12,9 +12,6 @@ const docsDir = process.env.DOCS_DIR ?? 'docs';
 const dryRun = process.env.DRY_RUN === 'true';
 // Optional, e.g. https://github.com/owner/repo/blob/main: links to repo files outside the docs folder point there.
 const repoBlobUrl = process.env.REPO_BLOB_URL?.replace(/\/$/, '');
-// Optional: "narva" draws mermaid blocks with the Mermaid app by Narva, which must be installed on the Confluence site.
-// Unset, they show as code.
-const mermaidApp = process.env.MERMAID_APP;
 
 const authHeader = 'Basic ' + Buffer.from(`${email}:${apiToken}`).toString('base64');
 
@@ -33,11 +30,12 @@ const FOLDER_PLACEHOLDER_BODY = '<ac:structured-macro ac:name="children" ac:sche
 const PROPERTY_READS_PER_BATCH = 10;
 const MAX_RETRIES = 3;
 
-// Languages the Confluence code macro highlights. Any other (mermaid, say) shows as plain text, titled with its name.
+// Languages the Confluence code macro highlights. Any other shows as plain text, titled with its name.
 const CODE_MACRO_LANGUAGES = new Set(['bash', 'java', 'json', 'sql', 'xml', 'text']);
 
-// The Narva app's Forge extension, copied from a diagram inserted by hand. Forge app and environment IDs are the same on
-// every site that installs the app.
+// Mermaid diagrams are drawn by the Mermaid app by Narva, which must be installed on the Confluence site. This is its
+// Forge extension, copied from a diagram inserted by hand. Forge app and environment IDs are the same on every site
+// that installs the app.
 const NARVA_MERMAID_EXTENSION = '336440d6-2d95-4275-833f-6351e86634e3/e5743d37-53d6-4daa-a3a1-acca68790e69/static/mermaid-diagram';
 
 await syncDocs();
@@ -182,7 +180,7 @@ function toStorageFormat(markdown, file, titlesByFile) {
         return false;
       },
       code(token) {
-        if (token.lang === 'mermaid' && mermaidApp === 'narva') {
+        if (token.lang === 'mermaid') {
           mermaidDiagrams++;
           return narvaMermaidMacro(token.text, `${file}#${mermaidDiagrams}`);
         }
